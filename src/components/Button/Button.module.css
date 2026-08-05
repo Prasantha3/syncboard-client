@@ -1,0 +1,54 @@
+.btn {
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.btn:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+/* variants */
+.primary {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.secondary {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.danger {
+  background: #dc2626;
+  color: #fff;
+}
+
+.ghost {
+  background: transparent;
+  color: #4f46e5;
+  border: 1px solid #c7c9f5;
+}
+
+/* sizes */
+.sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.md {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}

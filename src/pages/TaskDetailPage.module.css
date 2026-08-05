@@ -1,0 +1,39 @@
+.detail {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  max-width: 480px;
+}
+
+.detail h1 {
+  margin-top: 8px;
+  font-size: 1.4rem;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin-top: 16px;
+}
+
+.meta dt {
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.meta dd {
+  margin: 0;
+  color: #1f2937;
+}
+
+.backLink a {
+  color: #4f46e5;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.backLink a:hover {
+  text-decoration: underline;
+}
