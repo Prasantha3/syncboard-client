@@ -14,6 +14,18 @@ function Board() {
   const deleteTask = (id) =>
     setTasks((prev) => prev.filter((t) => t.id !== id));
 
+  const moveTask = (id, direction) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const currentIndex = STATUSES.indexOf(t.status);
+        const newIndex = currentIndex + direction;
+        if (newIndex < 0 || newIndex >= STATUSES.length) return t;
+        return { ...t, status: STATUSES[newIndex] };
+      })
+    );
+  };
+
   return (
     <>
       <AddTaskForm onAdd={addTask} />
@@ -23,7 +35,12 @@ function Board() {
           return (
             <Column key={status} title={status}>
               {tasksForStatus.map((task) => (
-                <TaskCard key={task.id} task={task} onDelete={deleteTask} />
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onDelete={deleteTask}
+                  onMove={moveTask}
+                />
               ))}
             </Column>
           );

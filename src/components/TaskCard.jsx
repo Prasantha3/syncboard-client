@@ -1,5 +1,11 @@
-function TaskCard({ task, onDelete }) {
+const STATUSES = ["To Do", "In Progress", "Done"];
+
+function TaskCard({ task, onDelete, onMove }) {
   const { id, title, assignee, status, dueDate } = task;
+
+  const currentIndex = STATUSES.indexOf(status);
+  const canMoveLeft = currentIndex > 0;
+  const canMoveRight = currentIndex < STATUSES.length - 1;
 
   return (
     <div className="task-card">
@@ -11,13 +17,31 @@ function TaskCard({ task, onDelete }) {
         </span>
         <span className="task-card-due">{dueDate}</span>
       </div>
-      <button
-        className="task-card-delete"
-        onClick={() => onDelete(id)}
-        aria-label={`Delete ${title}`}
-      >
-        Delete
-      </button>
+      <div className="task-card-actions">
+        <button
+          className="task-card-move"
+          onClick={() => onMove(id, -1)}
+          disabled={!canMoveLeft}
+          aria-label={`Move ${title} left`}
+        >
+          ← Move left
+        </button>
+        <button
+          className="task-card-move"
+          onClick={() => onMove(id, 1)}
+          disabled={!canMoveRight}
+          aria-label={`Move ${title} right`}
+        >
+          Move right →
+        </button>
+        <button
+          className="task-card-delete"
+          onClick={() => onDelete(id)}
+          aria-label={`Delete ${title}`}
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
