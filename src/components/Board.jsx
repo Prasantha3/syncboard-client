@@ -26,9 +26,15 @@ function Board() {
     );
   };
 
+  const doneCount = tasks.filter((t) => t.status === "Done").length;
+  const totalCount = tasks.length;
+
   return (
     <>
       <AddTaskForm onAdd={addTask} />
+      <p className="board-counter">
+        {doneCount} of {totalCount} done
+      </p>
       <div className="board">
         {STATUSES.map((status) => {
           const tasksForStatus = tasks.filter((task) => task.status === status);
