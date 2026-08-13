@@ -11,6 +11,9 @@ function Board() {
 
   const addTask = (task) => setTasks((prev) => [...prev, task]);
 
+  const deleteTask = (id) =>
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+
   return (
     <>
       <AddTaskForm onAdd={addTask} />
@@ -20,7 +23,7 @@ function Board() {
           return (
             <Column key={status} title={status}>
               {tasksForStatus.map((task) => (
-                <TaskCard key={task.id} task={task} />
+                <TaskCard key={task.id} task={task} onDelete={deleteTask} />
               ))}
             </Column>
           );

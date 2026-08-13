@@ -1,5 +1,5 @@
-function TaskCard({ task }) {
-  const { title, assignee, status, dueDate } = task;
+function TaskCard({ task, onDelete }) {
+  const { id, title, assignee, status, dueDate } = task;
 
   return (
     <div className="task-card">
@@ -11,6 +11,13 @@ function TaskCard({ task }) {
         </span>
         <span className="task-card-due">{dueDate}</span>
       </div>
+      <button
+        className="task-card-delete"
+        onClick={() => onDelete(id)}
+        aria-label={`Delete ${title}`}
+      >
+        Delete
+      </button>
     </div>
   );
 }
