@@ -1,4 +1,5 @@
-import {useState} from "react";
+import { useState } from "react";
+import Button from "./Button";
 
 function AddTaskForm ({onAdd}) {
     const [title, setTitle] = useState("");
@@ -41,8 +42,8 @@ function AddTaskForm ({onAdd}) {
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
             />
-            <button type="submit"> Add Task</button>
-            </form>
+            <Button type="submit" variant="primary">Add Task</Button>
+        </form>
     );
 }
 
