@@ -1,3 +1,5 @@
+import Button from "./Button";
+
 const STATUSES = ["To Do", "In Progress", "Done"];
 
 function TaskCard({ task, onDelete, onMove }) {
@@ -18,29 +20,32 @@ function TaskCard({ task, onDelete, onMove }) {
         <span className="task-card-due">{dueDate}</span>
       </div>
       <div className="task-card-actions">
-        <button
+        <Button
+          variant="secondary"
           className="task-card-move"
           onClick={() => onMove(id, -1)}
           disabled={!canMoveLeft}
           aria-label={`Move ${title} left`}
         >
           ← Move left
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           className="task-card-move"
           onClick={() => onMove(id, 1)}
           disabled={!canMoveRight}
           aria-label={`Move ${title} right`}
         >
           Move right →
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="danger"
           className="task-card-delete"
           onClick={() => onDelete(id)}
           aria-label={`Delete ${title}`}
         >
           Delete
-        </button>
+        </Button>
       </div>
     </div>
   );

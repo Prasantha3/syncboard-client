@@ -64,4 +64,6 @@ const mockTasks = [
   },
 ];
 
+export { mockTasks };
 export default mockTasks;
+

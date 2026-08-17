@@ -1,0 +1,115 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.25;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent, #aa3bff);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Primary Variant */
+.btn-primary {
+  background-color: #6366f1;
+  border-color: #6366f1;
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #4f46e5;
+  border-color: #4f46e5;
+}
+
+.btn-primary:active:not(:disabled) {
+  background-color: #4338ca;
+  transform: scale(0.98);
+}
+
+/* Secondary Variant */
+.btn-secondary {
+  background-color: #f3f4f6;
+  border-color: #e5e7eb;
+  color: #374151;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #e5e7eb;
+  border-color: #d1d5db;
+  color: #111827;
+}
+
+.btn-secondary:active:not(:disabled) {
+  background-color: #d1d5db;
+  transform: scale(0.98);
+}
+
+/* Danger Variant */
+.btn-danger {
+  background-color: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #dc2626;
+  border-color: #dc2626;
+}
+
+.btn-danger:active:not(:disabled) {
+  background-color: #b91c1c;
+  transform: scale(0.98);
+}
+
+/* Success Variant */
+.btn-success {
+  background-color: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: #059669;
+  border-color: #059669;
+}
+
+.btn-success:active:not(:disabled) {
+  background-color: #047857;
+  transform: scale(0.98);
+}
+
+/* Dark theme overrides */
+@media (prefers-color-scheme: dark) {
+  .btn-secondary {
+    background-color: #2e303a;
+    border-color: #3f4250;
+    color: #e5e7eb;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #3b3e4c;
+    border-color: #4f5366;
+    color: #ffffff;
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    background-color: #4a4e61;
+  }
+}
