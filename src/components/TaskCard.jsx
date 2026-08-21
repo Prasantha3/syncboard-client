@@ -1,23 +1,30 @@
-import {Link} from "react-router-dom";
+import { Link } from "react-router-dom";
 import Button from "./Button";
+import { useTheme } from "../context/ThemeContext";
 
 const STATUSES = ["To Do", "In Progress", "Done"];
 
 function TaskCard({ task, onDelete, onMove }) {
   const { id, title, assignee, status, dueDate } = task;
+  const { theme } = useTheme(); 
 
   const currentIndex = STATUSES.indexOf(status);
   const canMoveLeft = currentIndex > 0;
   const canMoveRight = currentIndex < STATUSES.length - 1;
 
   return (
-     <div className="task-card">
+    
+    <div className={`task-card task-card-${theme}`}>
       <Link to={`/tasks/${id}`} className="task-card-title">
         <h4>{title}</h4>
       </Link>
       <p className="task-card-assignee">{assignee}</p>
       <div className="task-card-footer">
-        <span className={`task-card-status status-${status.replace(/\s+/g, "-").toLowerCase()}`}>
+        <span
+          className={`task-card-status status-${status
+            .replace(/\s+/g, "-")
+            .toLowerCase()}`}
+        >
           {status}
         </span>
         <span className="task-card-due">{dueDate}</span>
