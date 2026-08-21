@@ -1,3 +1,4 @@
+import {Link} from "react-router-dom";
 import Button from "./Button";
 
 const STATUSES = ["To Do", "In Progress", "Done"];
@@ -10,8 +11,10 @@ function TaskCard({ task, onDelete, onMove }) {
   const canMoveRight = currentIndex < STATUSES.length - 1;
 
   return (
-    <div className="task-card">
-      <h4 className="task-card-title">{title}</h4>
+     <div className="task-card">
+      <Link to={`/tasks/${id}`} className="task-card-title">
+        <h4>{title}</h4>
+      </Link>
       <p className="task-card-assignee">{assignee}</p>
       <div className="task-card-footer">
         <span className={`task-card-status status-${status.replace(/\s+/g, "-").toLowerCase()}`}>
