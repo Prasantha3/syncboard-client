@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useReducer } from "react";
 import mockTasks from "../data/mockTasks";
 import Column from "./Column";
 import TaskCard from "./TaskCard";
@@ -6,25 +6,49 @@ import AddTaskForm from "./AddTaskForm";
 
 const STATUSES = ["To Do", "In Progress", "Done"];
 
+function tasksReducer(tasks, action){
+  switch (action.type){
+    case "added": {
+      return[...tasks, action.task];
+    }
+    case "moved":{
+      return tasks.map((t) => {
+        if (t.id !== action.id) return t;
+        const currentIndex = STATUSES.indexOf(t.status);
+        const newIndex = currentIndex + action.direction;
+        if (newIndex < 0 || newIndex >= STATUSES.length) return t;
+        return {...t, status: STATUSES[Index]};
+
+      });
+    }
+    case "deleted": {
+      return tasks.filter((t) => t.id !== action.id);
+
+    }
+    default:{
+      throw new Error('Unknown action type: ${action.type}');
+    }
+  }
+}
+
+
+
+
 function Board() {
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, dispatch] = useReducer(tasksReducer, mockTasks);
 
-  const addTask = (task) => setTasks((prev) => [...prev, task]);
+  const addTask = (task) => {
+    dispatch({type: "added", task });
+  };
 
-  const deleteTask = (id) =>
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+  const deleteTask = (id) => {
+    dispatch({ type: "deleted", id});
+  };
 
   const moveTask = (id, direction) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const currentIndex = STATUSES.indexOf(t.status);
-        const newIndex = currentIndex + direction;
-        if (newIndex < 0 || newIndex >= STATUSES.length) return t;
-        return { ...t, status: STATUSES[newIndex] };
-      })
-    );
+    dispatch({type: "moved", id, direction});
   };
+
 
   const doneCount = tasks.filter((t) => t.status === "Done").length;
   const totalCount = tasks.length;
