@@ -17,7 +17,7 @@ function tasksReducer(tasks, action){
         const currentIndex = STATUSES.indexOf(t.status);
         const newIndex = currentIndex + action.direction;
         if (newIndex < 0 || newIndex >= STATUSES.length) return t;
-        return {...t, status: STATUSES[Index]};
+        return {...t, status: STATUSES[newIndex]};
 
       });
     }
