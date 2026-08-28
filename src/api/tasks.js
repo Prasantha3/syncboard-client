@@ -17,41 +17,61 @@ const handleResponse = async (response) => {
 };
 
 export async function getTasks() {
-  const response = await fetch(API_BASE_URL);
-  return await handleResponse(response);
+  try {
+    const response = await fetch(API_BASE_URL);
+    return await handleResponse(response);
+  } catch (err) {
+    throw new Error(err.message || 'Could not connect to backend server');
+  }
 }
 
 export async function getTaskById(id) {
-  const response = await fetch(`${API_BASE_URL}/${id}`);
-  return await handleResponse(response);
+  try {
+    const response = await fetch(`${API_BASE_URL}/${id}`);
+    return await handleResponse(response);
+  } catch (err) {
+    throw new Error(err.message || 'Failed to fetch task details');
+  }
 }
 
 export async function createTask(task) {
-  const response = await fetch(API_BASE_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(task),
-  });
-  return await handleResponse(response);
+  try {
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(task),
+    });
+    return await handleResponse(response);
+  } catch (err) {
+    throw new Error(err.message || 'Failed to create task');
+  }
 }
 
 export async function updateTaskStatus(id, status) {
-  const response = await fetch(`${API_BASE_URL}/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ status }),
-  });
-  return await handleResponse(response);
+  try {
+    const response = await fetch(`${API_BASE_URL}/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status }),
+    });
+    return await handleResponse(response);
+  } catch (err) {
+    throw new Error(err.message || 'Failed to update task status');
+  }
 }
 
 export async function deleteTask(id) {
-  const response = await fetch(`${API_BASE_URL}/${id}`, {
-    method: 'DELETE',
-  });
-  await handleResponse(response);
-  return { id };
+  try {
+    const response = await fetch(`${API_BASE_URL}/${id}`, {
+      method: 'DELETE',
+    });
+    await handleResponse(response);
+    return { id };
+  } catch (err) {
+    throw new Error(err.message || 'Failed to delete task');
+  }
 }
