@@ -1,52 +1,57 @@
-import { mockTasks } from '../data/mockTasks'
+const API_BASE_URL = 'http://localhost:5000/api/tasks';
 
-// In-memory store standing in for the database. Components never touch this
-// directly or call fetch — they only ever import the named functions below.
-let store = [...mockTasks]
+// Helper to handle response status and extract JSON/errors cleanly
+const handleResponse = async (response) => {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = errorData.message || `HTTP Error: ${response.status} ${response.statusText}`;
+    throw new Error(errorMessage);
+  }
 
-const DELAY_MS = 500
+  // Handle 204 No Content (DELETE responses)
+  if (response.status === 204) {
+    return null;
+  }
 
-function delay(ms = DELAY_MS) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function clone(value) {
-  return JSON.parse(JSON.stringify(value))
-}
+  return await response.json();
+};
 
 export async function getTasks() {
-  await delay()
-  return clone(store)
+  const response = await fetch(API_BASE_URL);
+  return await handleResponse(response);
 }
 
 export async function getTaskById(id) {
-  await delay()
-  const task = store.find(t => t.id === id)
-  if (!task) {
-    throw new Error(`No task found with id "${id}"`)
-  }
-  return clone(task)
+  const response = await fetch(`${API_BASE_URL}/${id}`);
+  return await handleResponse(response);
 }
 
 export async function createTask(task) {
-  await delay()
-  const newTask = {
-    id: crypto.randomUUID(),
-    status: 'todo',
-    ...task,
-  }
-  store = [...store, newTask]
-  return clone(newTask)
+  const response = await fetch(API_BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(task),
+  });
+  return await handleResponse(response);
 }
 
 export async function updateTaskStatus(id, status) {
-  await delay()
-  store = store.map(t => (t.id === id ? { ...t, status } : t))
-  return clone(store.find(t => t.id === id))
+  const response = await fetch(`${API_BASE_URL}/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status }),
+  });
+  return await handleResponse(response);
 }
 
 export async function deleteTask(id) {
-  await delay()
-  store = store.filter(t => t.id !== id)
-  return { id }
+  const response = await fetch(`${API_BASE_URL}/${id}`, {
+    method: 'DELETE',
+  });
+  await handleResponse(response);
+  return { id };
 }
