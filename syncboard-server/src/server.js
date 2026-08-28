@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import taskRoutes from './routes/taskRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 dotenv.config();
 
@@ -30,7 +31,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Mount Task API Routes
+// Mount API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 
 // Global Error Handler
