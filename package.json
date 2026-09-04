@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "events": "^3.3.0",
+    "pouchdb-browser": "^8.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2"
