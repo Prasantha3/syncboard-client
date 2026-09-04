@@ -15,7 +15,7 @@ const router = express.Router();
 router.get('/', getTasks);
 router.get('/:id', validateObjectId('id'), getTaskById);
 
-// Protected mutation endpoints (requires valid JWT Bearer token)
+//  Re-verified auth guards — protected mutation endpoints (JWT Bearer token required)
 router.post('/', verifyToken, createTask);
 router.patch('/:id', verifyToken, validateObjectId('id'), updateTask);
 router.delete('/:id', verifyToken, validateObjectId('id'), deleteTask);
