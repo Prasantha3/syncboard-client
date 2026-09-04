@@ -14,9 +14,10 @@ export async function connectDb() {
 
   try {
     await mongoose.connect(uri, {
+      dbName: 'syncboard', // Force Mongoose to use the syncboard database
       serverSelectionTimeoutMS: 5000,
     });
-    console.log('✅ MongoDB connected');
+    console.log('✅ MongoDB connected to syncboard');
   } catch (err) {
     console.error('❌ MongoDB connection failed:', err.message);
     process.exit(1);

@@ -2,11 +2,72 @@
   "info": {
     "_postman_id": "b18ea018-a1b3-4916-85da-a7cf3284f6b7",
     "name": "SyncBoard API",
-    "description": "### Welcome to Postman! This is your first collection. \n\nCollections are your starting point for building and testing APIs. You can use this one to:\n\n• Group related requests\n• Test your API in real-world scenarios\n• Document and share your requests\n\nUpdate the name and overview whenever you’re ready to make it yours.\n\n[Learn more about Postman Collections.](https://learning.postman.com/docs/collections/collections-overview/)",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "57796213"
+    "description": "Postman Collection for SyncBoard API including core task endpoints, health monitoring, aggregation stats, and 409 conflict handling.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "health"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Health Check",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"OK\",\n  \"database\": \"connected\",\n  \"uptime\": 120\n}"
+        }
+      ]
+    },
+    {
+      "name": "Post Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@syncboard.com\",\n  \"password\": \"password123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "login"]
+        }
+      },
+      "response": []
+    },
     {
       "name": "Get Tasks",
       "event": [
@@ -18,9 +79,7 @@
               "    pm.response.to.have.status(200);",
               "});"
             ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
+            "type": "text/javascript"
           }
         }
       ],
@@ -28,91 +87,117 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://localhost:5000/api/tasks",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "5000",
-          "path": [
-            "api",
-            "tasks"
-          ]
-        },
-        "description": "This is a GET request and it is used to \"get\" data from an endpoint. There is no request body for a GET request, but you can use query parameters to help specify the resource you want data on (e.g., in this request, we have `id=1`).\n\nA successful GET response will have a `200 OK` status, and should include some kind of response body - for example, HTML web content or JSON data."
+          "raw": "{{baseUrl}}/api/tasks",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tasks"]
+        }
       },
       "response": []
     },
     {
-      "name": "Post Login",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Successful POST request\", function () {",
-              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-              "});",
-              ""
-            ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
-          }
-        }
-      ],
+      "name": "Get Overdue Tasks Stats",
       "request": {
-        "method": "POST",
+        "method": "GET",
         "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"admin@syncboard.com\",\n  \"password\": \"password123\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
         "url": {
-          "raw": "http://localhost:5000/api/auth/login",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "5000",
-          "path": [
-            "api",
-            "auth",
-            "login"
-          ]
-        },
-        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+          "raw": "{{baseUrl}}/api/tasks/stats/overdue",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tasks", "stats", "overdue"]
+        }
       },
-      "response": []
+      "response": [
+        {
+          "name": "200 OK - Overdue Stats",
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "[\n  {\n    \"assigneeId\": \"65d8a9b2c3e1f40012a3b499\",\n    \"overdueCount\": 2\n  }\n]"
+        }
+      ]
     },
     {
       "name": "POST Task",
       "request": {
-        "method": "GET",
-        "header": []
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"New SyncBoard Task\",\n  \"status\": \"todo\",\n  \"boardId\": \"65d8a9b2c3e1f40012a3b400\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/tasks",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tasks"]
+        }
       },
       "response": []
     },
     {
-      "name": "PATCH Task",
+      "name": "PATCH Task (409 Conflict Simulation)",
       "request": {
-        "method": "GET",
-        "header": []
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Updated Task Title\",\n  \"baseVersion\": 0\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/tasks/65d8a9b2c3e1f40012a3b4c5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tasks", "65d8a9b2c3e1f40012a3b4c5"]
+        }
       },
-      "response": []
+      "response": [
+        {
+          "name": "409 Conflict - Version Mismatch",
+          "status": "Conflict",
+          "code": 409,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"error\": \"Conflict\",\n  \"message\": \"Task was modified by another user\",\n  \"payload\": {\n    \"current\": {\n      \"_id\": \"65d8a9b2c3e1f40012a3b4c5\",\n      \"version\": 1\n    },\n    \"yourVersion\": 0\n  }\n}"
+        }
+      ]
     },
     {
       "name": "DELETE Task",
       "request": {
-        "method": "GET",
-        "header": []
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tasks/65d8a9b2c3e1f40012a3b4c5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tasks", "65d8a9b2c3e1f40012a3b4c5"]
+        }
       },
       "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
     }
   ]
 }
