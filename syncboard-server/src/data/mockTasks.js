@@ -2,14 +2,14 @@ export let tasks = [
   {
     id: "1",
     title: "Setup Express Server Architecture",
-    assignee: "K H D H Madhusanka",
+    assignee: "D P P V Senarathna",
     status: "Completed",
     dueDate: "2026-03-01",
   },
   {
     id: "2",
     title: "Build REST API Controllers",
-    assignee: "K H D H Madhusanka",
+    assignee: "D P P V Senarathna",
     status: "In Progress",
     dueDate: "2026-03-05",
   },
