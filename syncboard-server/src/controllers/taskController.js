@@ -1,83 +1,159 @@
-import { tasks } from '../data/mockTasks.js';
+import { Task } from '../models/Task.js';
 
-// GET /api/tasks - Returns full array of tasks
-export const getTasks = (req, res) => {
-  res.status(200).json(tasks);
+// GET /api/tasks - Returns full array of tasks from MongoDB
+export const getTasks = async (req, res, next) => {
+  try {
+    const tasks = await Task.find();
+    res.status(200).json(tasks);
+  } catch (error) {
+    next(error);
+  }
 };
 
 // GET /api/tasks/:id - Finds task by ID or returns 404
-export const getTaskById = (req, res) => {
-  const { id } = req.params;
-  const task = tasks.find((t) => t.id === id);
+export const getTaskById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const task = await Task.findById(id);
 
-  if (!task) {
-    return res.status(404).json({ error: 'Not Found', message: 'Task not found' });
+    if (!task) {
+      return res.status(404).json({ error: 'Not Found', message: 'Task not found' });
+    }
+
+    res.status(200).json(task);
+  } catch (error) {
+    next(error);
   }
-
-  res.status(200).json(task);
 };
 
-// POST /api/tasks - Validates title (min 3 chars), generates UUID, returns 201
-export const createTask = (req, res) => {
-  const { title, assignee, status, dueDate } = req.body;
+// POST /api/tasks - Validates title and persists new task
+export const createTask = async (req, res, next) => {
+  try {
+    const { title, assignee, status, dueDate } = req.body;
 
-  if (!title || title.trim().length < 3) {
-    return res.status(400).json({
-      error: 'Validation Error',
-      message: 'Title is required and must be at least 3 characters long',
+    if (!title || title.trim().length < 3) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Title is required and must be at least 3 characters long',
+      });
+    }
+
+    const newTask = await Task.create({
+      title: title.trim(),
+      assignee: assignee || 'Unassigned',
+      status: status || 'Pending',
+      dueDate: dueDate || new Date(),
     });
+
+    res.status(201).json(newTask);
+  } catch (error) {
+    next(error);
   }
-
-  const newTask = {
-    id: crypto.randomUUID(),
-    title: title.trim(),
-    assignee: assignee || 'Unassigned',
-    status: status || 'Pending',
-    dueDate: dueDate || new Date().toISOString().split('T')[0],
-  };
-
-  tasks.push(newTask);
-  res.status(201).json(newTask);
 };
 
-// PATCH /api/tasks/:id - Updates fields or status of an existing task
-export const updateTask = (req, res) => {
-  const { id } = req.params;
-  const taskIndex = tasks.findIndex((t) => t.id === id);
+// PATCH /api/tasks/:id - Optimistic concurrency update handling
+export const updateTask = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { changes, baseVersion, status, title, assignee, dueDate } = req.body;
 
-  if (taskIndex === -1) {
-    return res.status(404).json({ error: 'Not Found', message: 'Task not found' });
+    // Support both wrapped changes object or direct payload fields
+    const updatePayload = changes || {
+      ...(title && { title: title.trim() }),
+      ...(assignee && { assignee }),
+      ...(status && { status }),
+      ...(dueDate && { dueDate }),
+    };
+
+    if (updatePayload.title && updatePayload.title.trim().length < 3) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Title must be at least 3 characters long',
+      });
+    }
+
+    // Atomic version match update
+    const filter = { _id: id };
+    if (typeof baseVersion === 'number') {
+      filter.version = baseVersion;
+    }
+
+    const updatedTask = await Task.findOneAndUpdate(
+      filter,
+      { $set: updatePayload, $inc: { version: 1 } },
+      { new: true, runValidators: true }
+    );
+
+    // If update failed, check if task exists to report 409 Conflict vs 404 Not Found
+    if (!updatedTask) {
+      const currentTask = await Task.findById(id);
+
+      if (!currentTask) {
+        return res.status(404).json({ error: 'Not Found', message: 'Task not found' });
+      }
+
+      return res.status(409).json({
+        error: 'Conflict',
+        message: 'Task was modified by another user',
+        payload: {
+          current: currentTask,
+          yourVersion: baseVersion,
+        },
+      });
+    }
+
+    res.status(200).json(updatedTask);
+  } catch (error) {
+    next(error);
   }
-
-  const { title, assignee, status, dueDate } = req.body;
-
-  if (title && title.trim().length < 3) {
-    return res.status(400).json({
-      error: 'Validation Error',
-      message: 'Title must be at least 3 characters long',
-    });
-  }
-
-  tasks[taskIndex] = {
-    ...tasks[taskIndex],
-    ...(title && { title: title.trim() }),
-    ...(assignee && { assignee }),
-    ...(status && { status }),
-    ...(dueDate && { dueDate }),
-  };
-
-  res.status(200).json(tasks[taskIndex]);
 };
 
-// DELETE /api/tasks/:id - Filters out task by ID and returns 204
-export const deleteTask = (req, res) => {
-  const { id } = req.params;
-  const taskIndex = tasks.findIndex((t) => t.id === id);
+// DELETE /api/tasks/:id - Deletes task from MongoDB
+export const deleteTask = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const deletedTask = await Task.findByIdAndDelete(id);
 
-  if (taskIndex === -1) {
-    return res.status(404).json({ error: 'Not Found', message: 'Task not found' });
+    if (!deletedTask) {
+      return res.status(404).json({ error: 'Not Found', message: 'Task not found' });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
   }
+};
 
-  tasks.splice(taskIndex, 1);
-  res.status(204).send();
+// GET /api/tasks/stats/overdue - Aggregation Pipeline endpoint (Step 2)
+export const getOverdueTaskStats = async (req, res, next) => {
+  try {
+    const { boardId } = req.query;
+
+    const stats = await Task.aggregate([
+      {
+        $match: {
+          dueDate: { $lt: new Date() },
+          status: { $ne: 'DONE' },
+          ...(boardId ? { boardId } : {}),
+        },
+      },
+      {
+        $group: {
+          _id: '$assignee',
+          overdueCount: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          assignee: '$_id',
+          overdueCount: 1,
+        },
+      },
+    ]);
+
+    res.status(200).json(stats);
+  } catch (error) {
+    next(error);
+  }
 };

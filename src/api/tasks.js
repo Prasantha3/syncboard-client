@@ -10,8 +10,20 @@ const getAuthHeaders = () => {
 const handleResponse = async (response) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    
+    // Step 1 & 3: Handle HTTP 409 Conflict distinctly and preserve payload for UI
+    if (response.status === 409) {
+      const conflictError = new Error(errorData.message || 'Conflict detected: Task modified by another user');
+      conflictError.status = 409;
+      conflictError.isConflict = true;
+      conflictError.payload = errorData.payload || errorData; // Passes current & yourVersion to UI
+      throw conflictError;
+    }
+
     const errorMessage = errorData.message || `HTTP Error: ${response.status} ${response.statusText}`;
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage);
+    error.status = response.status;
+    throw error;
   }
 
   if (response.status === 204) {
@@ -28,7 +40,7 @@ export async function getTasks() {
     });
     return await handleResponse(response);
   } catch (err) {
-    throw new Error(err.message || 'Could not connect to backend server');
+    throw err;
   }
 }
 
@@ -39,7 +51,7 @@ export async function getTaskById(id) {
     });
     return await handleResponse(response);
   } catch (err) {
-    throw new Error(err.message || 'Failed to fetch task details');
+    throw err;
   }
 }
 
@@ -55,11 +67,11 @@ export async function createTask(task) {
     });
     return await handleResponse(response);
   } catch (err) {
-    throw new Error(err.message || 'Failed to create task');
+    throw err;
   }
 }
 
-export async function updateTaskStatus(id, status) {
+export async function updateTaskStatus(id, status, baseVersion) {
   try {
     const response = await fetch(`${API_BASE_URL}/${id}`, {
       method: 'PATCH',
@@ -67,11 +79,11 @@ export async function updateTaskStatus(id, status) {
         'Content-Type': 'application/json',
         ...getAuthHeaders(),
       },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ changes: { status }, baseVersion }),
     });
     return await handleResponse(response);
   } catch (err) {
-    throw new Error(err.message || 'Failed to update task status');
+    throw err;
   }
 }
 
@@ -84,6 +96,19 @@ export async function deleteTask(id) {
     await handleResponse(response);
     return { id };
   } catch (err) {
-    throw new Error(err.message || 'Failed to delete task');
+    throw err;
+  }
+}
+
+// Step 2: Fetch overdue task aggregation stats per assignee
+export async function getOverdueTaskStats(boardId) {
+  try {
+    const query = boardId ? `?boardId=${boardId}` : '';
+    const response = await fetch(`${API_BASE_URL}/stats/overdue${query}`, {
+      headers: { ...getAuthHeaders() },
+    });
+    return await handleResponse(response);
+  } catch (err) {
+    throw err;
   }
 }
