@@ -29,7 +29,7 @@ export const getTaskById = async (req, res, next) => {
 // POST /api/tasks - Validates title and persists new task
 export const createTask = async (req, res, next) => {
   try {
-    const { title, assignee, status, dueDate } = req.body;
+    const { title, assignee, status, dueDate, boardId } = req.body;
 
     if (!title || title.trim().length < 3) {
       return res.status(400).json({
@@ -41,7 +41,8 @@ export const createTask = async (req, res, next) => {
     const newTask = await Task.create({
       title: title.trim(),
       assignee: assignee || 'Unassigned',
-      status: status || 'Pending',
+      status: status || 'todo', // Fixed: lowercase 'todo' to match Mongoose schema enum
+      boardId: boardId || '65d8a9b2c3e1f40012a3b400', // Captures boardId from body
       dueDate: dueDate || new Date(),
     });
 
@@ -124,7 +125,7 @@ export const deleteTask = async (req, res, next) => {
   }
 };
 
-// GET /api/tasks/stats/overdue - Aggregation Pipeline endpoint (Step 2)
+// GET /api/tasks/stats/overdue - Aggregation Pipeline endpoint
 export const getOverdueTaskStats = async (req, res, next) => {
   try {
     const { boardId } = req.query;
