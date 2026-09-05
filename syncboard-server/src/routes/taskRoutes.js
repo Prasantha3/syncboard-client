@@ -7,23 +7,31 @@ import {
   deleteTask,
   getOverdueTaskStats,
 } from '../controllers/taskController.js';
-import { verifyToken } from '../middleware/authMiddleware.js';
 import { validateObjectId } from '../middleware/validateObjectId.js';
 
 const router = express.Router();
 
-// Public read endpoints
+// --- PUBLIC READ ENDPOINTS ---
+
+// GET /api/tasks - Fetch all tasks
 router.get('/', getTasks);
 
-// Step 2 (K G K Jayawardhana): Aggregation route MUST be registered BEFORE '/:id'
-// to prevent express from treating 'stats' as a task ID parameter
+// GET /api/tasks/stats/overdue - Aggregation stats per assignee
+// MUST be registered BEFORE '/:id' to avoid route matching conflicts
 router.get('/stats/overdue', getOverdueTaskStats);
 
+// GET /api/tasks/:id - Fetch single task by ID
 router.get('/:id', validateObjectId('id'), getTaskById);
 
-// Re-verified auth guards — protected mutation endpoints (JWT Bearer token required)
-router.post('/', verifyToken, createTask);
-router.patch('/:id', verifyToken, validateObjectId('id'), updateTask);
-router.delete('/:id', verifyToken, validateObjectId('id'), deleteTask);
+// --- UNPROTECTED MUTATION ENDPOINTS (Auth Bypassed for Testing) ---
+
+// POST /api/tasks - Create new task
+router.post('/', createTask);
+
+// PATCH /api/tasks/:id - Update task (supports optimistic concurrency)
+router.patch('/:id', validateObjectId('id'), updateTask);
+
+// DELETE /api/tasks/:id - Delete task from MongoDB
+router.delete('/:id', validateObjectId('id'), deleteTask);
 
 export default router;

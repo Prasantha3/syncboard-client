@@ -38,12 +38,18 @@ export const createTask = async (req, res, next) => {
       });
     }
 
+    // Explicit check ensures non-empty string inputs are preserved
+    const parsedAssignee =
+      typeof assignee === 'string' && assignee.trim().length > 0
+        ? assignee.trim()
+        : 'Unassigned';
+
     const newTask = await Task.create({
       title: title.trim(),
-      assignee: assignee || 'Unassigned',
-      status: status || 'todo', // Fixed: lowercase 'todo' to match Mongoose schema enum
-      boardId: boardId || '65d8a9b2c3e1f40012a3b400', // Captures boardId from body
-      dueDate: dueDate || new Date(),
+      assignee: parsedAssignee,
+      status: status || 'todo',
+      boardId: boardId || '65d8a9b2c3e1f40012a3b400',
+      dueDate: dueDate ? new Date(dueDate) : new Date(),
     });
 
     res.status(201).json(newTask);
@@ -61,7 +67,7 @@ export const updateTask = async (req, res, next) => {
     // Support both wrapped changes object or direct payload fields
     const updatePayload = changes || {
       ...(title && { title: title.trim() }),
-      ...(assignee && { assignee }),
+      ...(assignee !== undefined && { assignee: assignee.trim() || 'Unassigned' }),
       ...(status && { status }),
       ...(dueDate && { dueDate }),
     };
@@ -85,7 +91,6 @@ export const updateTask = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    // If update failed, check if task exists to report 409 Conflict vs 404 Not Found
     if (!updatedTask) {
       const currentTask = await Task.findById(id);
 
@@ -134,7 +139,7 @@ export const getOverdueTaskStats = async (req, res, next) => {
       {
         $match: {
           dueDate: { $lt: new Date() },
-          status: { $ne: 'DONE' },
+          status: { $ne: 'done' },
           ...(boardId ? { boardId } : {}),
         },
       },
