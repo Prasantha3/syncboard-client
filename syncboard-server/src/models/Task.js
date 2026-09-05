@@ -6,6 +6,10 @@ const taskSchema = new mongoose.Schema(
     columnId: { type: mongoose.Schema.Types.ObjectId },
     title: { type: String, required: true, trim: true, minlength: 3 },
     description: { type: String, default: '' },
+    
+    // ADDED: Plain string field to store typed assignee names
+    assignee: { type: String, default: 'Unassigned', trim: true },
+    
     assigneeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     status: {
       type: String,
@@ -34,6 +38,7 @@ const taskSchema = new mongoose.Schema(
 // Compound indexes for query performance
 taskSchema.index({ boardId: 1, status: 1, position: 1 });
 taskSchema.index({ boardId: 1, dueDate: 1 });
+taskSchema.index({ assignee: 1 });
 taskSchema.index({ assigneeId: 1, status: 1 });
 
 export const Task = mongoose.model('Task', taskSchema);
