@@ -1,43 +1,19 @@
-const jwt = require("jsonwebtoken");
+import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = "syncboard_secret_key";
+export const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-const authMiddleware = (req, res, next) => {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'Access token missing or malformed' });
+  }
 
-    // Get Authorization header
-    const authHeader = req.headers.authorization;
+  const token = authHeader.split(' ')[1];
 
-    if (!authHeader) {
-        return res.status(401).json({
-            message: "Authorization header is required"
-        });
-    }
-
-    // Check Bearer token
-    const parts = authHeader.split(" ");
-
-    if (parts.length !== 2 || parts[0] !== "Bearer") {
-        return res.status(401).json({
-            message: "Invalid authorization format"
-        });
-    }
-
-    const token = parts[1];
-
-    try {
-        // Verify token
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        // Store user information in request
-        req.user = decoded;
-
-        next();
-
-    } catch (error) {
-        return res.status(401).json({
-            message: "Invalid or expired token"
-        });
-    }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Invalid or expired token' });
+  }
 };
-
-module.exports = authMiddleware;
