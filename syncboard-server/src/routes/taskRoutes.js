@@ -8,6 +8,7 @@ import {
   getOverdueTaskStats,
 } from '../controllers/taskController.js';
 import { validateObjectId } from '../middleware/validateObjectId.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -23,15 +24,15 @@ router.get('/stats/overdue', getOverdueTaskStats);
 // GET /api/tasks/:id - Fetch single task by ID
 router.get('/:id', validateObjectId('id'), getTaskById);
 
-// --- UNPROTECTED MUTATION ENDPOINTS (Auth Bypassed for Testing) ---
+// --- PROTECTED MUTATION ENDPOINTS ---
 
 // POST /api/tasks - Create new task
-router.post('/', createTask);
+router.post('/', requireAuth, createTask);
 
 // PATCH /api/tasks/:id - Update task (supports optimistic concurrency)
-router.patch('/:id', validateObjectId('id'), updateTask);
+router.patch('/:id', requireAuth, validateObjectId('id'), updateTask);
 
 // DELETE /api/tasks/:id - Delete task from MongoDB
-router.delete('/:id', validateObjectId('id'), deleteTask);
+router.delete('/:id', requireAuth, validateObjectId('id'), deleteTask);
 
 export default router;
