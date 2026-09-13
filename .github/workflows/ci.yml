@@ -9,9 +9,6 @@ on:
 jobs:
   test-and-coverage:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./syncboard-client
 
     steps:
       - name: Checkout Code
@@ -22,7 +19,7 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: 'syncboard-client/package-lock.json'
+          cache-dependency-path: 'package-lock.json'
 
       - name: Install Dependencies
         run: npm install
@@ -35,5 +32,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: syncboard-client/coverage/
+          path: coverage/
           retention-days: 14
