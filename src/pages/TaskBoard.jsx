@@ -1,762 +1,1739 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+
 import {
-getTasks,
-createTask,
-updateTaskStatus,
-deleteTask,
+  getTasks,
+  createTask,
+  updateTaskStatus,
+  deleteTask,
 } from '../api/tasks';
+
 import localDb from '../db/localDb';
+
+import {
+  addToSyncQueue,
+  getSyncQueue,
+  removeFromSyncQueue,
+} from '../db/syncQueue';
+
 import Spinner from '../components/Spinner';
 import ErrorBanner from '../components/ErrorBanner';
 import EmptyState from '../components/EmptyState';
 
 let localSaveQueue = Promise.resolve();
 
-const saveTasksLocally = (taskList) => {
-localSaveQueue = localSaveQueue.then(async () => {
-for (const task of taskList) {
-const taskId = String(task.id || task._id || '');
+const saveTasksLocally = async (taskList) => {
+  localSaveQueue = localSaveQueue.then(async () => {
+    for (const task of taskList) {
+      const taskId = String(task.id || task._id);
 
-  if (!taskId || taskId === 'undefined') {
-    continue;
-  }
+      if (!taskId) {
+        continue;
+      }
 
-  const documentId = `task:${taskId}`;
+      const localDocument = {
+        ...task,
+        _id: `task:${taskId}`,
+      };
 
-  let existingDoc = null;
+      try {
+        const existing = await localDb.get(`task:${taskId}`);
+        localDocument._rev = existing._rev;
+      } catch (error) {
+        if (error.status !== 404) {
+          throw error;
+        }
+      }
 
-  try {
-    existingDoc = await localDb.get(documentId);
-  } catch (err) {
-    if (err.status !== 404) {
-      throw err;
+      try {
+        await localDb.put(localDocument);
+      } catch (error) {
+        if (error.status === 409) {
+          try {
+            const latest = await localDb.get(`task:${taskId}`);
+
+            localDocument._rev = latest._rev;
+
+            await localDb.put(localDocument);
+          } catch (retryError) {
+            console.error(
+              '❌ Failed to update local task:',
+              retryError
+            );
+          }
+        } else {
+          console.error(
+            '❌ Failed to save task locally:',
+            error
+          );
+        }
+      }
     }
-  }
-
-  const localDocument = {
-    ...task,
-    _id: documentId,
-    id: taskId,
-  };
-
-  if (existingDoc?._rev) {
-    localDocument._rev = existingDoc._rev;
-  }
-
-  try {
-    await localDb.put(localDocument);
-  } catch (err) {
-    if (err.status === 409) {
-      const latestDoc = await localDb.get(documentId);
-
-      await localDb.put({
-        ...localDocument,
-        _rev: latestDoc._rev,
-      });
-    } else {
-      throw err;
-    }
-  }
-}
-
-console.log('✅ Tasks saved to PouchDB');
-
-});
-
-return localSaveQueue;
-};
-
-async function loadTasksFromLocalDb() {
-try {
-const result = await localDb.allDocs({
-include_docs: true,
-});
-
-const localTasks = result.rows
-  .map((row) => row.doc)
-  .filter(
-    (doc) => doc && doc._id && doc._id.startsWith('task:')
-  )
-  .map((doc) => {
-    const { _id, _rev, ...task } = doc;
-
-    return {
-      ...task,
-      id: task.id || _id.replace('task:', ''),
-    };
   });
 
-console.log(
-  '📦 Tasks loaded from PouchDB:',
-  localTasks
-);
-
-return localTasks;
-
-} catch (err) {
-console.error(
-'❌ Failed to read tasks from PouchDB:',
-err
-);
-
-return [];
-
-}
-}
-
-export default function TaskBoard() {
-const [tasks, setTasks] = useState([]);
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState(null);
-const [isOffline, setIsOffline] = useState(false);
-
-const [title, setTitle] = useState('');
-const [assignee, setAssignee] = useState('');
-const [dueDate, setDueDate] = useState('');
-
-const loadTasks = async () => {
-setError(null);
-
-const localTasks = await loadTasksFromLocalDb();
-
-if (localTasks.length > 0) {
-  setTasks(localTasks);
-  setLoading(false);
-}
-
-try {
-  const data = await getTasks();
-
-  const serverTasks = Array.isArray(data)
-    ? data
-    : data?.tasks || data?.data || [];
-
-  setTasks(serverTasks);
-
-  await saveTasksLocally(serverTasks);
-
-  setIsOffline(false);
-  setError(null);
-} catch (err) {
-  console.error(
-    '❌ Server unavailable:',
-    err
-  );
-
-  setIsOffline(true);
-
-  if (localTasks.length > 0) {
-    setTasks(localTasks);
-    setError(null);
-  } else {
-    setTasks([]);
-    setError(
-      err.message ||
-        'Failed to connect to SyncBoard server'
-    );
-  }
-} finally {
-  setLoading(false);
-}
-
+  return localSaveQueue;
 };
 
-useEffect(() => {
-loadTasks();
-}, []);
+const loadTasksFromLocalDb = async () => {
+  const result = await localDb.allDocs({
+    include_docs: true,
+    startkey: 'task:',
+    endkey: 'task:\uffff',
+  });
 
-const handleAddTask = async (e) => {
-e.preventDefault();
+  return result.rows
+    .map((row) => row.doc)
+    .filter(Boolean)
+    .map((task) => {
+      const { _id, _rev, ...cleanTask } = task;
 
-if (!title.trim()) {
-  return;
-}
-
-const taskData = {
-  title: title.trim(),
-  assignee: assignee || 'Unassigned',
-  dueDate:
-    dueDate ||
-    new Date().toISOString().split('T')[0],
-  status: 'To Do',
+      return {
+        ...cleanTask,
+        id: String(
+          cleanTask.id ||
+            cleanTask._id ||
+            _id.replace('task:', '')
+        ),
+      };
+    });
 };
 
-try {
-  const newTask = await createTask(taskData);
+const makeOfflineTask = ({
+  title,
+  assignee,
+  dueDate,
+}) => {
+  const now = new Date().toISOString();
 
-  const createdItem =
-    newTask?.task ||
-    newTask?.data ||
-    newTask;
-
-  const taskId = String(
-    createdItem.id || createdItem._id
-  );
-
-  const taskWithId = {
-    ...createdItem,
-    id: taskId,
+  return {
+    id: `local-${Date.now()}`,
+    title,
+    assignee,
+    status: 'To Do',
+    dueDate:
+      dueDate ||
+      new Date().toISOString().slice(0, 10),
+    isLocalOnly: true,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
   };
-
-  setTasks((prev) => [
-    ...prev,
-    taskWithId,
-  ]);
-
-  await saveTasksLocally([taskWithId]);
-
-  setIsOffline(false);
-
-  setTitle('');
-  setAssignee('');
-  setDueDate('');
-} catch (err) {
-  console.log(
-    '📴 Server unavailable. Saving task locally.'
-  );
-
-  const offlineTask = {
-    ...taskData,
-    id: `offline-${Date.now()}`,
-  };
-
-  try {
-    await saveTasksLocally([offlineTask]);
-
-    setTasks((prev) => [
-      ...prev,
-      offlineTask,
-    ]);
-
-    setIsOffline(true);
-
-    setTitle('');
-    setAssignee('');
-    setDueDate('');
-
-    console.log(
-      '✅ Task saved locally while offline'
-    );
-  } catch (localError) {
-    console.error(
-      '❌ Failed to save offline task:',
-      localError
-    );
-
-    alert(
-      `Error adding task: ${localError.message}`
-    );
-  }
-}
-
 };
 
-const handleMove = async (id, newStatus) => {
-const taskId = String(id);
+function TaskBoard() {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-try {
-  const updated = await updateTaskStatus(
-    taskId,
-    newStatus
+  const [isOffline, setIsOffline] = useState(
+    !navigator.onLine
   );
 
-  const updatedItem =
-    updated?.task ||
-    updated?.data ||
-    updated;
+  const [syncing, setSyncing] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] =
+    useState(0);
 
-  const updatedTask = {
-    ...updatedItem,
-    id: String(
-      updatedItem.id ||
-        updatedItem._id ||
-        taskId
-    ),
-    status: newStatus,
-  };
+  const [title, setTitle] = useState('');
+  const [assignee, setAssignee] = useState('');
+  const [dueDate, setDueDate] = useState('');
 
-  setTasks((prev) =>
-    prev.map((task) =>
-      String(task.id || task._id) === taskId
-        ? {
-            ...task,
-            ...updatedTask,
-          }
-        : task
-    )
-  );
+  const [conflict, setConflict] = useState(null);
 
-  await saveTasksLocally([updatedTask]);
+  const updatePendingSyncCount = async () => {
+    try {
+      const queue = await getSyncQueue();
 
-  setIsOffline(false);
-} catch (err) {
-  console.log(
-    '📴 Server unavailable. Updating task locally.'
-  );
-
-  const currentTask = tasks.find(
-    (task) =>
-      String(task.id || task._id) === taskId
-  );
-
-  if (!currentTask) {
-    alert(
-      `Error updating task: ${err.message}`
-    );
-    return;
-  }
-
-  const offlineUpdatedTask = {
-    ...currentTask,
-    id: taskId,
-    status: newStatus,
-  };
-
-  try {
-    await saveTasksLocally([
-      offlineUpdatedTask,
-    ]);
-
-    setTasks((prev) =>
-      prev.map((task) =>
-        String(task.id || task._id) === taskId
-          ? offlineUpdatedTask
-          : task
-      )
-    );
-
-    setIsOffline(true);
-
-    console.log(
-      '✅ Task status updated locally while offline'
-    );
-  } catch (localError) {
-    alert(
-      `Error updating local task: ${localError.message}`
-    );
-  }
-}
-
-};
-
-const handleDelete = async (id) => {
-const taskId = String(id);
-
-try {
-  await deleteTask(taskId);
-
-  setTasks((prev) =>
-    prev.filter(
-      (task) =>
-        String(task.id || task._id) !== taskId
-    )
-  );
-
-  try {
-    const localTask = await localDb.get(
-      `task:${taskId}`
-    );
-
-    await localDb.remove(localTask);
-
-    console.log(
-      '🗑️ Task removed from PouchDB'
-    );
-  } catch (localError) {
-    if (localError.status !== 404) {
+      setPendingSyncCount(queue.length);
+    } catch (error) {
       console.error(
-        '❌ Failed to remove local task:',
-        localError
+        '❌ Failed to read sync queue:',
+        error
       );
     }
-  }
+  };
 
-  setIsOffline(false);
-} catch (err) {
-  console.log(
-    '📴 Server unavailable. Deleting task locally.'
-  );
+  const syncPendingChanges = async () => {
+    if (!navigator.onLine) {
+      setIsOffline(true);
+      return;
+    }
 
-  try {
-    const localTask = await localDb.get(
-      `task:${taskId}`
+    try {
+      const queue = await getSyncQueue();
+
+      if (queue.length === 0) {
+        setPendingSyncCount(0);
+        return;
+      }
+
+      setSyncing(true);
+
+      let remainingQueue = queue.length;
+
+      for (const change of queue) {
+        try {
+          if (change.type === 'create') {
+            const created = await createTask(change.data);
+
+            const createdTask = {
+              ...(created?.task ||
+                created?.data ||
+                created),
+
+              id: String(
+                created?.id ||
+                  created?._id ||
+                  created?.task?.id ||
+                  created?.task?._id ||
+                  created?.data?.id ||
+                  created?.data?._id ||
+                  change.taskId
+              ),
+            };
+
+            try {
+              const localTask = await localDb.get(
+                `task:${change.taskId}`
+              );
+
+              await localDb.remove(localTask);
+            } catch (localError) {
+              if (localError.status !== 404) {
+                console.error(
+                  '❌ Failed to remove old local task:',
+                  localError
+                );
+              }
+            }
+
+            await saveTasksLocally([createdTask]);
+
+            setTasks((prev) =>
+              prev.map((task) =>
+                String(task.id || task._id) ===
+                String(change.taskId)
+                  ? createdTask
+                  : task
+              )
+            );
+
+            await removeFromSyncQueue(change._id);
+
+            remainingQueue -= 1;
+
+            setPendingSyncCount(remainingQueue);
+
+            continue;
+          }
+
+          if (change.type === 'update') {
+            const updated = await updateTaskStatus(
+              change.taskId,
+              change.data.status,
+              typeof change.data.baseVersion === 'number'
+                ? change.data.baseVersion
+                : undefined
+            );
+
+            const updatedItem =
+              updated?.task ||
+              updated?.data ||
+              updated;
+
+            const updatedTask = {
+              ...change.data.task,
+              ...updatedItem,
+
+              id: String(
+                updatedItem?.id ||
+                  updatedItem?._id ||
+                  change.taskId
+              ),
+
+              status: change.data.status,
+            };
+
+            await saveTasksLocally([updatedTask]);
+
+            setTasks((prev) =>
+              prev.map((task) =>
+                String(task.id || task._id) ===
+                String(change.taskId)
+                  ? updatedTask
+                  : task
+              )
+            );
+
+            await removeFromSyncQueue(change._id);
+
+            remainingQueue -= 1;
+
+            setPendingSyncCount(remainingQueue);
+
+            continue;
+          }
+
+          if (change.type === 'delete') {
+            await deleteTask(change.taskId);
+
+            await removeFromSyncQueue(change._id);
+
+            remainingQueue -= 1;
+
+            setPendingSyncCount(remainingQueue);
+
+            continue;
+          }
+        } catch (syncError) {
+          if (syncError.status === 409) {
+            console.log(
+              '⚠️ Offline change caused a conflict:',
+              syncError
+            );
+
+            setConflict({
+              taskId: change.taskId,
+
+              attempted:
+                change.data?.task ||
+                change.data,
+
+              current:
+                syncError.conflict?.current ||
+                syncError.data?.payload?.current ||
+                null,
+
+              yourVersion:
+                syncError.conflict?.yourVersion ??
+                syncError.data?.payload?.yourVersion ??
+                change.data?.baseVersion ??
+                null,
+
+              message:
+                syncError.data?.message ||
+                syncError.message ||
+                'An offline change conflicts with the current server version.',
+            });
+
+            continue;
+          }
+
+          console.error(
+            '❌ Failed to sync ' +
+              change.type +
+              ' for task ' +
+              change.taskId +
+              ':',
+            syncError
+          );
+        }
+      }
+
+      await updatePendingSyncCount();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    const initialiseBoard = async () => {
+      try {
+        const localTasks =
+          await loadTasksFromLocalDb();
+
+        if (localTasks.length > 0) {
+          setTasks(localTasks);
+          setLoading(false);
+        }
+
+        await updatePendingSyncCount();
+
+        if (!navigator.onLine) {
+          setIsOffline(true);
+
+          if (localTasks.length === 0) {
+            setLoading(false);
+          }
+
+          return;
+        }
+
+        await syncPendingChanges();
+
+        try {
+          const serverTasks = await getTasks();
+
+          const normalizedTasks = (
+            Array.isArray(serverTasks)
+              ? serverTasks
+              : serverTasks?.tasks || []
+          ).map((task) => ({
+            ...task,
+            id: String(task.id || task._id),
+          }));
+
+          setTasks(normalizedTasks);
+
+          await saveTasksLocally(normalizedTasks);
+
+          setIsOffline(false);
+        } catch (serverError) {
+          console.error(
+            '❌ Background server refresh failed:',
+            serverError
+          );
+
+          setIsOffline(true);
+        }
+      } catch (initialError) {
+        console.error(
+          '❌ Failed to initialise board:',
+          initialError
+        );
+
+        setError(
+          'Unable to load tasks from local storage.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initialiseBoard();
+
+    const handleOnline = async () => {
+      setIsOffline(false);
+
+      await syncPendingChanges();
+
+      try {
+        const serverTasks = await getTasks();
+
+        const normalizedTasks = (
+          Array.isArray(serverTasks)
+            ? serverTasks
+            : serverTasks?.tasks || []
+        ).map((task) => ({
+          ...task,
+          id: String(task.id || task._id),
+        }));
+
+        setTasks(normalizedTasks);
+
+        await saveTasksLocally(normalizedTasks);
+
+        setIsOffline(false);
+      } catch (error) {
+        console.error(
+          '❌ Failed to refresh after coming online:',
+          error
+        );
+
+        setIsOffline(true);
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener(
+      'online',
+      handleOnline
     );
 
-    await localDb.remove(localTask);
+    window.addEventListener(
+      'offline',
+      handleOffline
+    );
 
-    setTasks((prev) =>
-      prev.filter(
+    return () => {
+      window.removeEventListener(
+        'online',
+        handleOnline
+      );
+
+      window.removeEventListener(
+        'offline',
+        handleOffline
+      );
+    };
+  }, []);
+
+  const handleAddTask = async (event) => {
+    event.preventDefault();
+
+    if (!title.trim()) {
+      return;
+    }
+
+    const taskData = {
+      title: title.trim(),
+      assignee:
+        assignee.trim() || 'Team Member',
+      dueDate:
+        dueDate ||
+        new Date().toISOString().slice(0, 10),
+    };
+
+    if (!navigator.onLine) {
+      const offlineTask =
+        makeOfflineTask(taskData);
+
+      setTasks((prev) => [
+        ...prev,
+        offlineTask,
+      ]);
+
+      await saveTasksLocally([offlineTask]);
+
+      await addToSyncQueue({
+        type: 'create',
+        taskId: offlineTask.id,
+        data: taskData,
+      });
+
+      await updatePendingSyncCount();
+
+      setIsOffline(true);
+
+      setTitle('');
+      setAssignee('');
+      setDueDate('');
+
+      return;
+    }
+
+    try {
+      const created =
+        await createTask(taskData);
+
+      const createdTask = {
+        ...(created?.task ||
+          created?.data ||
+          created),
+
+        id: String(
+          created?.id ||
+            created?._id ||
+            created?.task?.id ||
+            created?.task?._id ||
+            created?.data?.id ||
+            created?.data?._id
+        ),
+      };
+
+      setTasks((prev) => [
+        ...prev,
+        createdTask,
+      ]);
+
+      await saveTasksLocally([
+        createdTask,
+      ]);
+
+      setIsOffline(false);
+
+      setTitle('');
+      setAssignee('');
+      setDueDate('');
+    } catch (err) {
+      console.error(
+        '❌ Failed to create task:',
+        err
+      );
+
+      if (
+        !navigator.onLine ||
+        err.name === 'TypeError'
+      ) {
+        const offlineTask =
+          makeOfflineTask(taskData);
+
+        setTasks((prev) => [
+          ...prev,
+          offlineTask,
+        ]);
+
+        await saveTasksLocally([
+          offlineTask,
+        ]);
+
+        await addToSyncQueue({
+          type: 'create',
+          taskId: offlineTask.id,
+          data: taskData,
+        });
+
+        await updatePendingSyncCount();
+
+        setIsOffline(true);
+
+        setTitle('');
+        setAssignee('');
+        setDueDate('');
+
+        return;
+      }
+
+      setError(
+        err.message ||
+          'Failed to create task.'
+      );
+    }
+  };
+
+  const handleMove = async (
+    id,
+    newStatus
+  ) => {
+    const taskId = String(id);
+
+    const currentTask =
+      tasks.find(
         (task) =>
-          String(task.id || task._id) !==
-          taskId
-      )
-    );
+          String(
+            task.id || task._id
+          ) === taskId
+      );
 
-    setIsOffline(true);
+    if (!currentTask) {
+      return;
+    }
 
-    console.log(
-      '✅ Task deleted locally while offline'
-    );
-  } catch (localError) {
-    if (localError.status === 404) {
+    const attemptedChange = {
+      ...currentTask,
+      id: taskId,
+      status: newStatus,
+    };
+
+    if (currentTask.isLocalOnly) {
+      const localUpdatedTask = {
+        ...currentTask,
+        status: newStatus,
+        updatedAt:
+          new Date().toISOString(),
+      };
+
       setTasks((prev) =>
-        prev.filter(
-          (task) =>
-            String(task.id || task._id) !==
-            taskId
+        prev.map((task) =>
+          String(
+            task.id || task._id
+          ) === taskId
+            ? localUpdatedTask
+            : task
         )
       );
 
+      await saveTasksLocally([
+        localUpdatedTask,
+      ]);
+
+      await addToSyncQueue({
+        type: 'create',
+        taskId,
+        data: {
+          title:
+            localUpdatedTask.title,
+          assignee:
+            localUpdatedTask.assignee,
+          dueDate:
+            localUpdatedTask.dueDate,
+          status:
+            localUpdatedTask.status,
+        },
+      });
+
+      await updatePendingSyncCount();
+
       setIsOffline(true);
-    } else {
-      alert(
-        `Error deleting task: ${localError.message}`
-      );
+
+      return;
     }
-  }
-}
 
-};
+    /*
+     * IMPORTANT:
+     * If the user is offline, do not call the server.
+     * Update the local task and put the change
+     * into the sync queue.
+     */
+    if (!navigator.onLine) {
+      const localUpdatedTask = {
+        ...currentTask,
+        status: newStatus,
+        updatedAt:
+          new Date().toISOString(),
+      };
 
-const getStatus = (task) =>
-task.status
-?.toLowerCase()
-.replace(/\s+/g, '');
+      setTasks((prev) =>
+        prev.map((task) =>
+          String(
+            task.id || task._id
+          ) === taskId
+            ? localUpdatedTask
+            : task
+        )
+      );
 
-const todoTasks = tasks.filter((task) => {
-const status = getStatus(task);
+      await saveTasksLocally([
+        localUpdatedTask,
+      ]);
 
-return (
-  status === 'todo' ||
-  status === 'pending'
-);
+      await addToSyncQueue({
+        type: 'update',
+        taskId,
+        data: {
+          task: localUpdatedTask,
+          status: newStatus,
+          baseVersion:
+            typeof currentTask.version ===
+            'number'
+              ? currentTask.version
+              : undefined,
+        },
+      });
 
-});
+      await updatePendingSyncCount();
 
-const inProgressTasks = tasks.filter(
-(task) =>
-getStatus(task) === 'inprogress'
-);
+      setIsOffline(true);
 
-const doneTasks = tasks.filter((task) => {
-const status = getStatus(task);
+      return;
+    }
 
-return (
-  status === 'done' ||
-  status === 'completed'
-);
+    try {
+      const updated =
+        await updateTaskStatus(
+          taskId,
+          newStatus,
+          typeof currentTask.version ===
+            'number'
+            ? currentTask.version
+            : undefined
+        );
 
-});
+      const updatedItem =
+        updated?.task ||
+        updated?.data ||
+        updated;
 
-const renderTask = (
-task,
-buttons
-) => {
-const taskId = String(
-task.id || task._id
-);
+      const updatedTask = {
+        ...currentTask,
+        ...updatedItem,
 
-return (
-  <div
-    key={taskId}
-    style={{
-      background: '#fff',
-      padding: '1rem',
-      marginBottom: '1rem',
-      borderRadius: '6px',
-      boxShadow:
-        '0 1px 3px rgba(0, 0, 0, 0.1)',
-    }}
-  >
-    <h4>{task.title}</h4>
+        id: String(
+          updatedItem?.id ||
+            updatedItem?._id ||
+            taskId
+        ),
 
-    <p style={{ color: '#666' }}>
-      {task.assignee}
-    </p>
+        status: newStatus,
+      };
 
-    {task.dueDate && (
-      <p
-        style={{
-          color: '#777',
-          fontSize: '0.9rem',
-        }}
-      >
-        Due: {task.dueDate}
-      </p>
-    )}
+      setTasks((prev) =>
+        prev.map((task) =>
+          String(
+            task.id || task._id
+          ) === taskId
+            ? updatedTask
+            : task
+        )
+      );
 
-    <div
-      style={{
-        display: 'flex',
-        gap: '0.5rem',
-        marginTop: '0.5rem',
-        flexWrap: 'wrap',
-      }}
-    >
-      {buttons}
-    </div>
-  </div>
-);
+      await saveTasksLocally([
+        updatedTask,
+      ]);
 
-};
+      setIsOffline(false);
+      setConflict(null);
+    } catch (err) {
+      if (err.status === 409) {
+        console.log(
+          '⚠️ Task update conflict:',
+          err
+        );
 
-return (
-<div
-style={{
-padding: '2rem',
-fontFamily: 'sans-serif',
-}}
->
-{isOffline && (
-<div
-style={{
-backgroundColor: '#fff3cd',
-color: '#856404',
-padding: '0.75rem 1rem',
-borderRadius: '6px',
-marginBottom: '1rem',
-textAlign: 'center',
-border:
-'1px solid #ffeeba',
-}}
->
-📴 You are offline. Showing locally
-saved tasks.
-</div>
-)}
+        setConflict({
+          taskId,
+          attempted: attemptedChange,
 
-  <form
-    onSubmit={handleAddTask}
-    style={{
-      display: 'flex',
-      gap: '1rem',
-      justifyContent: 'center',
-      marginBottom: '2rem',
-      flexWrap: 'wrap',
-    }}
-  >
-    <input
-      type="text"
-      placeholder="Task title"
-      value={title}
-      onChange={(e) =>
-        setTitle(e.target.value)
+          current:
+            err.conflict?.current ||
+            err.data?.payload?.current ||
+            null,
+
+          yourVersion:
+            err.conflict?.yourVersion ??
+            err.data?.payload?.yourVersion ??
+            currentTask.version,
+
+          message:
+            err.data?.message ||
+            err.message ||
+            'Task was modified by another user.',
+        });
+
+        return;
       }
-      required
-    />
 
-    <input
-      type="text"
-      placeholder="Assignee"
-      value={assignee}
-      onChange={(e) =>
-        setAssignee(e.target.value)
+      console.log(
+        '📴 Server unavailable. Updating task locally.'
+      );
+
+      const localUpdatedTask = {
+        ...currentTask,
+        status: newStatus,
+        updatedAt:
+          new Date().toISOString(),
+      };
+
+      setTasks((prev) =>
+        prev.map((task) =>
+          String(
+            task.id || task._id
+          ) === taskId
+            ? localUpdatedTask
+            : task
+        )
+      );
+
+      await saveTasksLocally([
+        localUpdatedTask,
+      ]);
+
+      await addToSyncQueue({
+        type: 'update',
+        taskId,
+        data: {
+          task: localUpdatedTask,
+          status: newStatus,
+          baseVersion:
+            typeof currentTask.version ===
+            'number'
+              ? currentTask.version
+              : undefined,
+        },
+      });
+
+      await updatePendingSyncCount();
+
+      setIsOffline(true);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const taskId = String(id);
+
+    const currentTask =
+      tasks.find(
+        (task) =>
+          String(
+            task.id || task._id
+          ) === taskId
+      );
+
+    if (!currentTask) {
+      return;
+    }
+
+    if (currentTask.isLocalOnly) {
+      setTasks((prev) =>
+        prev.filter(
+          (task) =>
+            String(
+              task.id || task._id
+            ) !== taskId
+        )
+      );
+
+      try {
+        const localTask =
+          await localDb.get(
+            `task:${taskId}`
+          );
+
+        await localDb.remove(
+          localTask
+        );
+      } catch (error) {
+        if (error.status !== 404) {
+          console.error(
+            '❌ Failed to delete local task:',
+            error
+          );
+        }
       }
-    />
 
-    <input
-      type="date"
-      value={dueDate}
-      onChange={(e) =>
-        setDueDate(e.target.value)
+      const queue =
+        await getSyncQueue();
+
+      const createChange =
+        queue.find(
+          (item) =>
+            item.type === 'create' &&
+            String(item.taskId) === taskId
+        );
+
+      if (createChange) {
+        await removeFromSyncQueue(
+          createChange._id
+        );
       }
-    />
 
-    <button
-      type="submit"
-      style={{
-        backgroundColor: '#4F46E5',
-        color: '#fff',
-        border: 'none',
-        padding: '0.5rem 1rem',
-        borderRadius: '4px',
-      }}
-    >
-      Add Task
-    </button>
-  </form>
+      await updatePendingSyncCount();
 
-  {loading && <Spinner />}
+      setIsOffline(true);
 
-  {error && !loading && (
-    <ErrorBanner
-      message={error}
-      onRetry={loadTasks}
-    />
-  )}
+      return;
+    }
 
-  {!loading &&
-    !error &&
-    tasks.length === 0 && (
-      <EmptyState
-        message="No tasks match current filters or search terms."
-      />
-    )}
+    if (!navigator.onLine) {
+      setTasks((prev) =>
+        prev.filter(
+          (task) =>
+            String(
+              task.id || task._id
+            ) !== taskId
+        )
+      );
 
-  {!loading &&
-    !error &&
-    tasks.length > 0 && (
+      try {
+        const localTask =
+          await localDb.get(
+            `task:${taskId}`
+          );
+
+        await localDb.remove(
+          localTask
+        );
+      } catch (error) {
+        if (error.status !== 404) {
+          console.error(
+            '❌ Failed to delete local task:',
+            error
+          );
+        }
+      }
+
+      await addToSyncQueue({
+        type: 'delete',
+        taskId,
+        data: {
+          task: currentTask,
+        },
+      });
+
+      await updatePendingSyncCount();
+
+      setIsOffline(true);
+
+      return;
+    }
+
+    try {
+      await deleteTask(taskId);
+
+      setTasks((prev) =>
+        prev.filter(
+          (task) =>
+            String(
+              task.id || task._id
+            ) !== taskId
+        )
+      );
+
+      try {
+        const localTask =
+          await localDb.get(
+            `task:${taskId}`
+          );
+
+        await localDb.remove(
+          localTask
+        );
+      } catch (localError) {
+        if (localError.status !== 404) {
+          console.error(
+            '❌ Failed to remove task locally:',
+            localError
+          );
+        }
+      }
+
+      setIsOffline(false);
+    } catch (err) {
+      console.log(
+        '📴 Server unavailable. Deleting task locally.'
+      );
+
+      setTasks((prev) =>
+        prev.filter(
+          (task) =>
+            String(
+              task.id || task._id
+            ) !== taskId
+        )
+      );
+
+      try {
+        const localTask =
+          await localDb.get(
+            `task:${taskId}`
+          );
+
+        await localDb.remove(
+          localTask
+        );
+      } catch (localError) {
+        if (localError.status !== 404) {
+          console.error(
+            '❌ Failed to remove task locally:',
+            localError
+          );
+        }
+      }
+
+      await addToSyncQueue({
+        type: 'delete',
+        taskId,
+        data: {
+          task: currentTask,
+        },
+      });
+
+      await updatePendingSyncCount();
+
+      setIsOffline(true);
+    }
+  };
+
+  const handleKeepServerVersion =
+    async () => {
+      if (!conflict?.current) {
+        setConflict(null);
+        return;
+      }
+
+      const serverTask = {
+        ...conflict.current,
+        id: String(
+          conflict.current.id ||
+            conflict.current._id ||
+            conflict.taskId
+        ),
+      };
+
+      setTasks((prev) =>
+        prev.map((task) =>
+          String(
+            task.id || task._id
+          ) === conflict.taskId
+            ? serverTask
+            : task
+        )
+      );
+
+      try {
+        await saveTasksLocally([
+          serverTask,
+        ]);
+      } catch (err) {
+        console.error(
+          '❌ Failed to save server version locally:',
+          err
+        );
+      }
+
+      try {
+        const queue =
+          await getSyncQueue();
+
+        for (const item of queue) {
+          if (
+            String(item.taskId) ===
+              String(conflict.taskId) &&
+            item.type === 'update'
+          ) {
+            await removeFromSyncQueue(
+              item._id
+            );
+          }
+        }
+
+        await updatePendingSyncCount();
+      } catch (queueError) {
+        console.error(
+          '❌ Failed to clear conflict queue:',
+          queueError
+        );
+      }
+
+      setConflict(null);
+
+      console.log(
+        '✅ Conflict resolved using server version'
+      );
+    };
+
+  const handleRetryMyChange =
+    async () => {
+      if (
+        !conflict?.attempted ||
+        !conflict?.current
+      ) {
+        return;
+      }
+
+      const taskId =
+        conflict.taskId;
+
+      const attemptedStatus =
+        conflict.attempted.status;
+
+      const latestVersion =
+        conflict.current.version;
+
+      try {
+        const updated =
+          await updateTaskStatus(
+            taskId,
+            attemptedStatus,
+            typeof latestVersion ===
+              'number'
+              ? latestVersion
+              : undefined
+          );
+
+        const updatedItem =
+          updated?.task ||
+          updated?.data ||
+          updated;
+
+        const updatedTask = {
+          ...updatedItem,
+
+          id: String(
+            updatedItem?.id ||
+              updatedItem?._id ||
+              taskId
+          ),
+
+          status: attemptedStatus,
+        };
+
+        setTasks((prev) =>
+          prev.map((task) =>
+            String(
+              task.id || task._id
+            ) === taskId
+              ? {
+                  ...task,
+                  ...updatedTask,
+                }
+              : task
+          )
+        );
+
+        await saveTasksLocally([
+          updatedTask,
+        ]);
+
+        try {
+          const queue =
+            await getSyncQueue();
+
+          for (const item of queue) {
+            if (
+              String(item.taskId) ===
+                taskId &&
+              item.type === 'update'
+            ) {
+              await removeFromSyncQueue(
+                item._id
+              );
+            }
+          }
+        } catch (queueError) {
+          console.error(
+            '❌ Failed to clear retry queue:',
+            queueError
+          );
+        }
+
+        await updatePendingSyncCount();
+
+        setConflict(null);
+        setIsOffline(false);
+
+        console.log(
+          '✅ Conflict resolved by retrying your change'
+        );
+      } catch (err) {
+        if (err.status === 409) {
+          setConflict({
+            taskId,
+
+            attempted: {
+              ...conflict.attempted,
+              status: attemptedStatus,
+            },
+
+            current:
+              err.conflict?.current ||
+              err.data?.payload?.current ||
+              conflict.current,
+
+            yourVersion:
+              err.conflict?.yourVersion ??
+              err.data?.payload?.yourVersion ??
+              latestVersion,
+
+            message:
+              err.data?.message ||
+              err.message ||
+              'The task changed again. Please review the conflict.',
+          });
+
+          return;
+        }
+
+        alert(
+          'Unable to retry your change: ' +
+            err.message
+        );
+      }
+    };
+
+  const renderTask = (task) => {
+    return (
       <div
+        key={String(
+          task.id || task._id
+        )}
         style={{
-          display: 'grid',
-          gridTemplateColumns:
-            'repeat(3, 1fr)',
-          gap: '1.5rem',
+          backgroundColor: '#ffffff',
+          border: '1px solid #ddd',
+          borderRadius: '8px',
+          padding: '1rem',
+          marginBottom: '1rem',
+          boxShadow:
+            '0 2px 5px rgba(0,0,0,0.08)',
         }}
       >
-        <div
+        <h3
           style={{
-            background: '#f4f5f7',
-            padding: '1rem',
-            borderRadius: '8px',
-            color: '#000',
+            marginTop: 0,
+            marginBottom: '0.5rem',
           }}
         >
-          <h3>
-            TO DO ({todoTasks.length})
-          </h3>
+          {task.title}
+        </h3>
 
-          {todoTasks.map((task) =>
-            renderTask(
-              task,
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleMove(
-                      task.id || task._id,
-                      'In Progress'
-                    )
-                  }
-                >
-                  Move right →
-                </button>
+        {task.description && (
+          <p
+            style={{
+              color: '#555',
+            }}
+          >
+            {task.description}
+          </p>
+        )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDelete(
-                      task.id || task._id
-                    )
-                  }
-                  style={{
-                    color: 'red',
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )
-          )}
-        </div>
+        <p>
+          <strong>Assignee:</strong>{' '}
+          {task.assignee ||
+            task.assigneeId ||
+            'Team Member'}
+        </p>
 
-        <div
-          style={{
-            background: '#f4f5f7',
-            padding: '1rem',
-            borderRadius: '8px',
-            color: '#000',
-          }}
-        >
-          <h3>
-            IN PROGRESS (
-            {inProgressTasks.length})
-          </h3>
+        <p>
+          <strong>Status:</strong>{' '}
+          {task.status}
+        </p>
 
-          {inProgressTasks.map((task) =>
-            renderTask(
-              task,
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleMove(
-                      task.id || task._id,
-                      'To Do'
-                    )
-                  }
-                >
-                  ← Move left
-                </button>
+        {task.dueDate && (
+          <p>
+            <strong>Due:</strong>{' '}
+            {new Date(
+              task.dueDate
+            ).toLocaleDateString()}
+          </p>
+        )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleMove(
-                      task.id || task._id,
-                      'Done'
-                    )
-                  }
-                >
-                  Move right →
-                </button>
+        {typeof task.version ===
+          'number' && (
+          <p
+            style={{
+              color: '#777',
+              fontSize: '0.85rem',
+            }}
+          >
+            Version: {task.version}
+          </p>
+        )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDelete(
-                      task.id || task._id
-                    )
-                  }
-                  style={{
-                    color: 'red',
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )
-          )}
-        </div>
+        {task.isLocalOnly && (
+          <p
+            style={{
+              color: '#856404',
+              backgroundColor: '#fff3cd',
+              padding: '0.4rem',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+            }}
+          >
+            📴 Local-only task
+          </p>
+        )}
 
         <div
           style={{
-            background: '#f4f5f7',
-            padding: '1rem',
-            borderRadius: '8px',
-            color: '#000',
+            display: 'flex',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+            marginTop: '0.75rem',
           }}
         >
-          <h3>
-            DONE ({doneTasks.length})
-          </h3>
+          {task.status !== 'To Do' &&
+            task.status !== 'Pending' &&
+            task.status !== 'pending' && (
+              <button
+                type="button"
+                onClick={() =>
+                  handleMove(
+                    task.id ||
+                      task._id,
+                    'To Do'
+                  )
+                }
+              >
+                Move to To Do
+              </button>
+            )}
 
-          {doneTasks.map((task) =>
-            renderTask(
-              task,
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleMove(
-                      task.id || task._id,
-                      'In Progress'
-                    )
-                  }
-                >
-                  ← Move left
-                </button>
+          {task.status !==
+            'In Progress' &&
+            task.status !==
+              'in-progress' && (
+              <button
+                type="button"
+                onClick={() =>
+                  handleMove(
+                    task.id ||
+                      task._id,
+                    'In Progress'
+                  )
+                }
+              >
+                Move to In Progress
+              </button>
+            )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleDelete(
-                      task.id || task._id
-                    )
-                  }
-                  style={{
-                    color: 'red',
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )
-          )}
+          {task.status !==
+            'Completed' &&
+            task.status !==
+              'completed' && (
+              <button
+                type="button"
+                onClick={() =>
+                  handleMove(
+                    task.id ||
+                      task._id,
+                    'Completed'
+                  )
+                }
+              >
+                Move to Completed
+              </button>
+            )}
+
+          <button
+            type="button"
+            onClick={() =>
+              handleDelete(
+                task.id ||
+                  task._id
+              )
+            }
+          >
+            Delete
+          </button>
         </div>
       </div>
-    )}
-</div>
+    );
+  };
 
-);
+  const todoTasks = tasks.filter(
+    (task) =>
+      task.status === 'To Do' ||
+      task.status === 'todo' ||
+      task.status === 'Pending' ||
+      task.status === 'pending'
+  );
+
+  const inProgressTasks =
+    tasks.filter(
+      (task) =>
+        task.status ===
+          'In Progress' ||
+        task.status ===
+          'in-progress'
+    );
+
+  const completedTasks =
+    tasks.filter(
+      (task) =>
+        task.status ===
+          'Completed' ||
+        task.status ===
+          'completed'
+    );
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          padding: '2rem',
+        }}
+      >
+        <Spinner />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        padding: '2rem',
+        maxWidth: '1400px',
+        margin: '0 auto',
+      }}
+    >
+      <h1>SyncBoard</h1>
+
+      {isOffline && (
+        <div
+          style={{
+            backgroundColor: '#fff3cd',
+            color: '#856404',
+            padding: '0.75rem 1rem',
+            borderRadius: '6px',
+            marginBottom: '1rem',
+            border: '1px solid #ffeeba',
+          }}
+        >
+          📴 You are offline. Showing locally
+          saved tasks.
+        </div>
+      )}
+
+      {syncing && (
+        <div
+          style={{
+            backgroundColor: '#e7f1ff',
+            color: '#123',
+            padding: '0.75rem 1rem',
+            borderRadius: '6px',
+            marginBottom: '1rem',
+            border: '1px solid #b8d4ff',
+          }}
+        >
+          🔄 Syncing offline changes with the
+          server...
+        </div>
+      )}
+
+      {!syncing &&
+        pendingSyncCount > 0 && (
+          <div
+            style={{
+              backgroundColor: '#fff3cd',
+              color: '#856404',
+              padding: '0.75rem 1rem',
+              borderRadius: '6px',
+              marginBottom: '1rem',
+              border: '1px solid #ffeeba',
+            }}
+          >
+            ⏳ {pendingSyncCount} change
+            {pendingSyncCount === 1
+              ? ''
+              : 's'}{' '}
+            waiting to synchronize.
+          </div>
+        )}
+
+      {error && (
+        <ErrorBanner message={error} />
+      )}
+
+      {conflict && (
+        <div
+          style={{
+            backgroundColor: '#f8d7da',
+            color: '#721c24',
+            padding: '1.25rem',
+            borderRadius: '8px',
+            marginBottom: '1.5rem',
+            border: '1px solid #f5c6cb',
+          }}
+        >
+          <h3
+            style={{
+              marginTop: 0,
+            }}
+          >
+            ⚠️ Conflict detected
+          </h3>
+
+          <p>{conflict.message}</p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'repeat(2, minmax(0, 1fr))',
+              gap: '1rem',
+              marginTop: '1rem',
+            }}
+          >
+            <div
+              style={{
+                background: '#e7f1ff',
+                padding: '1rem',
+                borderRadius: '6px',
+                color: '#123',
+              }}
+            >
+              <h4>Your attempted change</h4>
+
+              <p>
+                <strong>Version:</strong>{' '}
+                {conflict.yourVersion ??
+                  conflict.attempted
+                    ?.version ??
+                  'Unknown'}
+              </p>
+
+              <p>
+                <strong>Status:</strong>{' '}
+                {conflict.attempted
+                  ?.status ||
+                  'Unknown'}
+              </p>
+
+              <p>
+                <strong>Title:</strong>{' '}
+                {conflict.attempted
+                  ?.title ||
+                  'Unknown'}
+              </p>
+            </div>
+
+            <div
+              style={{
+                background: '#fff3cd',
+                padding: '1rem',
+                borderRadius: '6px',
+                color: '#533f03',
+              }}
+            >
+              <h4>Current server version</h4>
+
+              <p>
+                <strong>Version:</strong>{' '}
+                {conflict.current
+                  ?.version ??
+                  'Unknown'}
+              </p>
+
+              <p>
+                <strong>Status:</strong>{' '}
+                {conflict.current
+                  ?.status ||
+                  'Unknown'}
+              </p>
+
+              <p>
+                <strong>Title:</strong>{' '}
+                {conflict.current
+                  ?.title ||
+                  'Unknown'}
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.75rem',
+              marginTop: '1rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              type="button"
+              onClick={
+                handleKeepServerVersion
+              }
+            >
+              Keep Server Version
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                handleRetryMyChange
+              }
+            >
+              Retry My Change
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setConflict(null)
+              }
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      <form
+        onSubmit={handleAddTask}
+        style={{
+          backgroundColor: '#f5f5f5',
+          padding: '1rem',
+          borderRadius: '8px',
+          marginBottom: '2rem',
+        }}
+      >
+        <h2>Add Task</h2>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.75rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <input
+            type="text"
+            placeholder="Task title"
+            value={title}
+            onChange={(event) =>
+              setTitle(
+                event.target.value
+              )
+            }
+          />
+
+          <input
+            type="text"
+            placeholder="Assignee"
+            value={assignee}
+            onChange={(event) =>
+              setAssignee(
+                event.target.value
+              )
+            }
+          />
+
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(event) =>
+              setDueDate(
+                event.target.value
+              )
+            }
+          />
+
+          <button type="submit">
+            Add Task
+          </button>
+        </div>
+      </form>
+
+      {tasks.length === 0 ? (
+        <EmptyState
+          message="No tasks available."
+        />
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns:
+              'repeat(3, 1fr)',
+            gap: '1.5rem',
+            alignItems: 'start',
+          }}
+        >
+          <section>
+            <h2>
+              To Do ({todoTasks.length})
+            </h2>
+
+            {todoTasks.length === 0 ? (
+              <p
+                style={{
+                  color: '#777',
+                }}
+              >
+                No tasks
+              </p>
+            ) : (
+              todoTasks.map(renderTask)
+            )}
+          </section>
+
+          <section>
+            <h2>
+              In Progress (
+              {inProgressTasks.length}
+              )
+            </h2>
+
+            {inProgressTasks.length === 0 ? (
+              <p
+                style={{
+                  color: '#777',
+                }}
+              >
+                No tasks
+              </p>
+            ) : (
+              inProgressTasks.map(
+                renderTask
+              )
+            )}
+          </section>
+
+          <section>
+            <h2>
+              Completed (
+              {completedTasks.length}
+              )
+            </h2>
+
+            {completedTasks.length === 0 ? (
+              <p
+                style={{
+                  color: '#777',
+                }}
+              >
+                No tasks
+              </p>
+            ) : (
+              completedTasks.map(
+                renderTask
+              )
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
 }
+
+export default TaskBoard;

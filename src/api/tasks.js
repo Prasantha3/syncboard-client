@@ -1,5 +1,18 @@
 const API_BASE_URL = 'http://localhost:5000/api/tasks';
 
+const getAuthHeaders = () => {
+  const token =
+    localStorage.getItem('token') ||
+    localStorage.getItem('accessToken');
+
+  return {
+    'Content-Type': 'application/json',
+    ...(token
+      ? { Authorization: `Bearer ${token}` }
+      : {}),
+  };
+};
+
 const handleResponse = async (response) => {
   const responseData = await response.json().catch(() => ({}));
 
@@ -27,21 +40,27 @@ const handleResponse = async (response) => {
 };
 
 export async function getTasks() {
-  const response = await fetch(API_BASE_URL);
+  const response = await fetch(API_BASE_URL, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
   return await handleResponse(response);
 }
 
 export async function getTaskById(id) {
-  const response = await fetch(`${API_BASE_URL}/${id}`);
+  const response = await fetch(`${API_BASE_URL}/${id}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
   return await handleResponse(response);
 }
 
 export async function createTask(task) {
   const response = await fetch(API_BASE_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     body: JSON.stringify(task),
   });
 
@@ -51,12 +70,12 @@ export async function createTask(task) {
 export async function updateTaskStatus(id, status, baseVersion) {
   const response = await fetch(`${API_BASE_URL}/${id}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     body: JSON.stringify({
       status,
-      ...(typeof baseVersion === 'number' ? { baseVersion } : {}),
+      ...(typeof baseVersion === 'number'
+        ? { baseVersion }
+        : {}),
     }),
   });
 
@@ -66,6 +85,7 @@ export async function updateTaskStatus(id, status, baseVersion) {
 export async function deleteTask(id) {
   const response = await fetch(`${API_BASE_URL}/${id}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
   });
 
   await handleResponse(response);
