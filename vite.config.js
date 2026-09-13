@@ -20,5 +20,15 @@ export default defineConfig({
     setupFiles: './src/setupTests.js',
     include: ['src/**/*.{test,spec}.{js,jsx}'],
     exclude: ['syncboard-server/**', 'node_modules/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      thresholds: {
+        statements: 60,
+        branches: 60,
+        functions: 60,
+        lines: 60,
+      },
+    },
   },
 });
